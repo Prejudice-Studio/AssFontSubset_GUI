@@ -12,12 +12,14 @@ import logging
 import traceback
 from datetime import datetime
 import sys
-import time
 import signal
+import time
 
 # ======================== 初始化设置 ========================
 os.environ['GRADIO_SERVER_NAME'] = '127.0.0.1'
+os.environ['PYTHONUTF8'] = '1'  # 确保UTF-8编码
 if os.name == 'nt':
+    os.environ['PYTHONLEGACYWINDOWSSTDIO'] = 'utf-8'
     import asyncio
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -26,7 +28,8 @@ LOG_FILE = "assfontsubset_gui.log"
 logging.basicConfig(
     filename=LOG_FILE,
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    encoding='utf-8'
 )
 
 # ======================== 配置管理 ========================
@@ -43,34 +46,6 @@ DEFAULT_CONFIG = {
     "debug": False,
     "server_port": DEFAULT_PORT
 }
-
-def get_port_from_file():
-    """从WebUI_Port文件中读取端口号"""
-    try:
-        if os.path.exists(PORT_FILE_PATH):
-            with open(PORT_FILE_PATH, 'r') as f:
-                port_str = f.read().strip()
-                is_valid, port = validate_port(port_str)
-                if is_valid:
-                    return port
-        return None  # 文件不存在或内容无效时返回None
-    except Exception as e:
-        logging.error(f"读取端口文件出错: {str(e)}")
-        return None
-
-def save_port_to_file(port):
-    """保存端口号到WebUI_Port文件"""
-    try:
-        is_valid, port = validate_port(str(port))
-        if not is_valid:
-            return False
-        
-        with open(PORT_FILE_PATH, 'w') as f:
-            f.write(str(port))
-        return True
-    except Exception as e:
-        logging.error(f"保存端口文件出错: {str(e)}")
-        return False
 
 def clean_path(path_str: str) -> str:
     """清理路径字符串，去除多余的引号"""
@@ -99,12 +74,40 @@ def validate_port(port_str: str) -> Tuple[bool, Optional[int]]:
     except ValueError:
         return False, None
 
+def get_port_from_file():
+    """从WebUI_Port文件中读取端口号"""
+    try:
+        if os.path.exists(PORT_FILE_PATH):
+            with open(PORT_FILE_PATH, 'r', encoding='utf-8') as f:
+                port_str = f.read().strip()
+                is_valid, port = validate_port(port_str)
+                if is_valid:
+                    return port
+        return None
+    except Exception as e:
+        logging.error(f"读取端口文件出错: {str(e)}")
+        return None
+
+def save_port_to_file(port):
+    """保存端口号到WebUI_Port文件"""
+    try:
+        is_valid, port = validate_port(str(port))
+        if not is_valid:
+            return False
+        
+        with open(PORT_FILE_PATH, 'w', encoding='utf-8') as f:
+            f.write(str(port))
+        return True
+    except Exception as e:
+        logging.error(f"保存端口文件出错: {str(e)}")
+        return False
+
 def generate_default_filename() -> str:
     """生成默认文件名"""
     return f"assfont_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
 
 def load_config(config_path: str = "") -> Tuple[dict, Optional[str]]:
-    """加载配置文件，返回配置和错误信息"""
+    """加载配置文件"""
     config_path = clean_path(config_path) if config_path else DEFAULT_CONFIG_PATH
     try:
         if os.path.exists(config_path):
@@ -132,20 +135,18 @@ def load_config(config_path: str = "") -> Tuple[dict, Optional[str]]:
 def save_config(save_dir: str, filename: str, config: dict) -> Tuple[bool, Optional[str]]:
     """保存配置到指定路径"""
     try:
-        # 验证目录
         is_valid, validated_dir = validate_dir_path(save_dir)
         if not is_valid:
             return False, validated_dir
         
-        # 处理文件名
         if not filename.strip():
             filename = generate_default_filename()
         elif not filename.lower().endswith('.json'):
             filename += '.json'
         
         save_path = os.path.join(validated_dir, filename)
-        
         os.makedirs(validated_dir, exist_ok=True)
+        
         with open(save_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
         
@@ -155,13 +156,11 @@ def save_config(save_dir: str, filename: str, config: dict) -> Tuple[bool, Optio
         logging.error(error_msg)
         return False, error_msg
 
-# ======================== 核心功能 ========================
 def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str, 
                      subset_backend: str, bin_path: str, 
                      source_han_ellipsis: bool, debug: bool) -> str:
     """执行 AssFontSubset 命令"""
     try:
-        # 验证输入文件
         valid_inputs = []
         for p in input_paths:
             p = clean_path(p)
@@ -187,7 +186,7 @@ def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str,
         if subset_backend != "PyFontTools":
             cmd.extend(["--subset-backend", subset_backend])
         
-        if bin_path and bin_path.strip():  # 只有当bin_path不为空时才添加
+        if bin_path and bin_path.strip():
             is_valid, validated = validate_dir_path(bin_path)
             if is_valid:
                 cmd.extend(["--bin-path", validated])
@@ -198,7 +197,15 @@ def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str,
         if debug:
             cmd.append("--debug")
         
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            encoding='utf-8',
+            errors='replace',
+            check=True
+        )
+        
         output = f"执行成功！\n\n输出信息：\n{result.stdout}"
         if debug and result.stderr:
             output += f"\n\n调试信息：\n{result.stderr}"
@@ -212,42 +219,35 @@ def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str,
         logging.error(error_msg)
         return error_msg
 
-# ======================== WebUI 界面 ========================
 def create_ui():
-    # 从文件读取端口号
     initial_port = get_port_from_file() or DEFAULT_PORT
     
     with gr.Blocks(title="AssFontSubset WebUI") as demo:
-        # 主页面
         with gr.Tab("主界面"):
             gr.Markdown("# AssFontSubset 字体子集化工具")
-            gr.Markdown("用于将ASS字幕中使用的字体子集化，减小字体文件大小")
             
             with gr.Row():
                 with gr.Column():
-                    # 设置
-                    with gr.Accordion("程序设置", open=False):
+                    with gr.Accordion("服务器设置", open=False):
                         server_port = gr.Number(
-                            label="WebUI端口",
+                            label="服务器端口",
                             value=initial_port,
                             precision=0,
                             minimum=1024,
                             maximum=65535
                         )
-                        launch_btn = gr.Button("修改WebUI端口", variant="secondary")
+                        port_save_btn = gr.Button("保存端口设置", variant="secondary")
+                        port_status = gr.Textbox(label="状态", interactive=False)
                     
-                    # 配置文件管理
                     with gr.Group():
                         config_file = gr.File(label="选择配置文件", file_types=[".json"], file_count="single")
                         load_config_btn = gr.Button("加载配置")
                     
-                    # 保存配置区域
                     with gr.Group():
                         save_dir = gr.Textbox(label="保存目录", placeholder="输入保存目录完整路径")
                         filename = gr.Textbox(label="文件名（可选）", placeholder="留空使用自动生成文件名")
                         save_btn = gr.Button("保存配置", variant="primary")
                     
-                    # 主参数
                     input_files = gr.Files(
                         label="选择ASS字幕文件",
                         file_types=[".ass"],
@@ -256,7 +256,6 @@ def create_ui():
                     output_dir = gr.Textbox(label="输出目录 (默认: 同目录下的output文件夹)")
                     font_dir = gr.Textbox(label="字体目录 (默认: 同目录下的fonts文件夹)")
                     
-                    # 高级选项
                     with gr.Accordion("高级选项", open=False):
                         subset_backend = gr.Dropdown(
                             ["PyFontTools", "HarfBuzzSubset"], 
@@ -273,13 +272,11 @@ def create_ui():
                         )
                         debug = gr.Checkbox(label="调试模式", value=False)
                     
-                    # 执行按钮
                     run_btn = gr.Button("开始子集化", variant="primary")
                 
                 with gr.Column():
                     output_log = gr.Textbox(label="执行结果", interactive=False, lines=20)
         
-        # 日志页面
         with gr.Tab("控制台日志"):
             log_display = gr.Textbox(label="日志内容", interactive=False, lines=25, max_lines=1000)
             refresh_btn = gr.Button("刷新日志")
@@ -293,13 +290,9 @@ def create_ui():
                 except Exception as e:
                     return f"读取日志失败: {str(e)}"
             
-            refresh_btn.click(
-                fn=update_log_display,
-                outputs=log_display
-            )
+            refresh_btn.click(update_log_display, outputs=log_display)
         
-        # 按钮事件处理
-        def handle_load_config(config_file_obj) -> Tuple[list, str, str, str, str, bool, bool, int, Optional[str]]:
+        def handle_load_config(config_file_obj):
             if not config_file_obj:
                 return [], "", "", "PyFontTools", "", True, False, initial_port, "未选择配置文件"
             
@@ -325,9 +318,8 @@ def create_ui():
                 logging.error(error_msg)
                 return [], "", "", "PyFontTools", "", True, False, initial_port, error_msg
         
-        def handle_save_config(save_dir: str, filename: str, input_files, output_dir, font_dir, 
-                             subset_backend, bin_path, source_han_ellipsis, debug, port) -> str:
-            """执行配置保存"""
+        def handle_save_config(save_dir, filename, input_files, output_dir, font_dir, 
+                             subset_backend, bin_path, source_han_ellipsis, debug, port):
             current_config = {
                 "input_paths": input_files,
                 "output_dir": output_dir,
@@ -338,83 +330,74 @@ def create_ui():
                 "debug": debug,
                 "server_port": port
             }
-            
             success, result = save_config(save_dir, filename, current_config)
             return result
         
-        # 事件绑定
+        def save_port_settings(port):
+            try:
+                port = int(port)
+                if 1024 <= port <= 65535:
+                    save_port_to_file(port)
+                    return f"端口设置已保存: {port} (下次启动时生效)", ""
+                return "端口号必须在1024-65535之间", ""
+            except ValueError:
+                return "请输入有效的端口号", ""
+        
         load_config_btn.click(
-            fn=lambda: update_log_display(),
-            outputs=log_display,
-            queue=False
+            lambda: update_log_display(),
+            outputs=log_display
         ).then(
-            fn=handle_load_config,
+            handle_load_config,
             inputs=config_file,
             outputs=[input_files, output_dir, font_dir, subset_backend, bin_path, 
                     source_han_ellipsis, debug, server_port, output_log]
         )
         
         save_btn.click(
-            fn=handle_save_config,
+            handle_save_config,
             inputs=[save_dir, filename, input_files, output_dir, font_dir, 
                    subset_backend, bin_path, source_han_ellipsis, debug, server_port],
             outputs=output_log
         )
         
-        launch_btn.click(
-            fn=launch_server,
+        port_save_btn.click(
+            save_port_settings,
             inputs=server_port,
-            outputs=output_log
+            outputs=[port_status, output_log]
         )
         
         run_btn.click(
-            fn=run_assfontsubset,
+            run_assfontsubset,
             inputs=[input_files, output_dir, font_dir, subset_backend, bin_path, source_han_ellipsis, debug],
             outputs=output_log
         ).then(
-            fn=lambda: update_log_display(),
-            outputs=log_display,
-            queue=False
+            lambda: update_log_display(),
+            outputs=log_display
         )
         
         return demo
 
-def launch_server(port):
-    """仅保存端口设置，不重启"""
-    try:
-        port = int(port)
-        if 1024 <= port <= 65535:
-            save_port_to_file(port)
-            return f"已保存端口设置: {port}\n更改将在下次启动时生效"
-        return "端口号必须在1024-65535之间"
-    except ValueError:
-        return "请输入有效的端口号"
-
 def safe_launch(demo, max_attempts=20):
-    """安全启动Gradio应用，自动处理端口冲突"""
-    # 1. 首先尝试从文件读取的端口
-    preferred_port = get_port_from_file()
-    start_port = preferred_port if preferred_port else DEFAULT_PORT
+    """安全启动Gradio应用"""
+    preferred_port = get_port_from_file() or DEFAULT_PORT
     
     for attempt in range(max_attempts):
-        port = start_port + attempt
+        port = preferred_port + attempt
         try:
             print(f"尝试在端口 {port} 启动...")
             
-            # 检查端口是否可用
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
                 s.bind(('127.0.0.1', port))
             
-            # 设置信号处理，使Ctrl+C能正常退出
-            signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
+            # 设置信号处理
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
             
-            # 启动Gradio
             demo.launch(
                 server_name="127.0.0.1",
-                server_port=port
+                server_port=port,
+                show_error=True
             )
             
-            # 保存成功使用的端口
             save_port_to_file(port)
             print(f"服务已启动在端口 {port}")
             webbrowser.open(f"http://127.0.0.1:{port}")
@@ -430,24 +413,13 @@ def main():
     try:
         demo = create_ui()
         safe_launch(demo)
-        
-        # 保持程序运行
-        while True:
-            time.sleep(1)
     except KeyboardInterrupt:
-        print("\n正在关闭服务器...")
+        print("\n程序已安全退出")
         sys.exit(0)
     except Exception as e:
         logging.error(f"程序启动失败: {str(e)}\n{traceback.format_exc()}")
         print(f"程序启动失败: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    # 设置环境变量防止IPv6问题
-    os.environ['GRADIO_SERVER_NAME'] = '127.0.0.1'
-    
-    # 修复Windows socket问题
-    if os.name == 'nt':
-        import asyncio
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
     main()
