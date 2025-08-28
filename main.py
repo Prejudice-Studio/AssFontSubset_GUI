@@ -161,63 +161,16 @@ def save_config(save_dir: str, filename: str, config: dict) -> Tuple[bool, Optio
         logging.error(error_msg)
         return False, error_msg
 
-def restore_ampersand_in_filenames(output_dir: str, original_filenames: List[str]):
-    """恢复文件名中的&符号"""
-    try:
-        output_path = Path(output_dir)
-        if not output_path.exists():
-            return
-        
-        for original_name in original_filenames:
-            original_path = Path(original_name)
-            original_stem = original_path.stem
-            original_suffix = original_path.suffix
-            
-            # 检查原始文件名是否包含&
-            if '&' not in original_stem:
-                continue
-                
-            # 查找可能被去掉&的文件
-            for file in output_path.iterdir():
-                if file.is_file() and file.suffix == original_suffix:
-                    file_stem = file.stem
-                    
-                    # 创建一个没有&的版本进行比较
-                    file_stem_no_amp = file_stem.replace('&', '')
-                    original_stem_no_amp = original_stem.replace('&', '')
-                    
-                    # 如果文件名匹配但缺少&
-                    if (file_stem_no_amp == original_stem_no_amp and 
-                        '&' not in file_stem and 
-                        '&' in original_stem):
-                        
-                        # 构建新文件名
-                        new_name = original_stem + original_suffix
-                        new_path = output_path / new_name
-                        
-                        # 如果目标文件已存在，先删除
-                        if new_path.exists():
-                            new_path.unlink()
-                        
-                        # 重命名文件
-                        file.rename(new_path)
-                        logging.info(f"已恢复文件名中的&: {file.name} -> {new_name}")
-    except Exception as e:
-        logging.error(f"恢复文件名中的&时出错: {str(e)}")
-        logging.error(traceback.format_exc())
-
 def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str, 
                      subset_backend: str, bin_path: str, 
                      source_han_ellipsis: bool, debug: bool) -> str:
     """执行 AssFontSubset 命令"""
     try:
         valid_inputs = []
-        original_filenames = []  # 保存原始文件名用于后续恢复&
         for p in input_paths:
             p = clean_path(p)
             if p.lower().endswith('.ass') and os.path.isfile(p):
                 valid_inputs.append(p)
-                original_filenames.append(os.path.basename(p))
         
         if not valid_inputs:
             return "错误：没有有效的ASS文件路径"
@@ -265,9 +218,6 @@ def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str,
             errors='replace',
             check=True
         )
-        
-        # 处理文件名中的&符号
-        restore_ampersand_in_filenames(final_output_dir, original_filenames)
         
         output = f"执行成功！\n\n输出信息：\n{result.stdout}"
         if debug and result.stderr:
