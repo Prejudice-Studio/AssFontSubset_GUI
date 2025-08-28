@@ -1,7 +1,9 @@
 # AssFontSubset_GUI
 
 [AssFontSubset](https://github.com/AmusementClub/AssFontSubset)的GUI
+
 因为没有可用的GUI所以自己写了一个
+
 使用Gradio
 
 ## 使用方法
