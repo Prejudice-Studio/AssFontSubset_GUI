@@ -119,9 +119,13 @@ def load_config(config_path: str = "") -> Tuple[dict, Optional[str]]:
                     for key, value in config.items():
                         if key in valid_config:
                             if key.endswith(('_dir', '_path', 'output_dir')):
-                                validated = validate_dir_path(value)[1]
-                                if validated:
-                                    valid_config[key] = validated
+                                # 对于输出目录，允许为空字符串
+                                if key == 'output_dir':
+                                    valid_config[key] = value if value is not None else ""
+                                else:
+                                    validated = validate_dir_path(value)[1]
+                                    if validated:
+                                        valid_config[key] = validated
                             elif key == 'input_paths' and isinstance(value, list):
                                 valid_config[key] = [validate_dir_path(p)[1] for p in value if validate_dir_path(p)[1]]
                             else:
@@ -165,8 +169,9 @@ def restore_ampersand_in_filenames(output_dir: str, original_filenames: List[str
             return
         
         for original_name in original_filenames:
-            original_stem = Path(original_name).stem
-            original_suffix = Path(original_name).suffix
+            original_path = Path(original_name)
+            original_stem = original_path.stem
+            original_suffix = original_path.suffix
             
             # 检查原始文件名是否包含&
             if '&' not in original_stem:
@@ -176,8 +181,13 @@ def restore_ampersand_in_filenames(output_dir: str, original_filenames: List[str
             for file in output_path.iterdir():
                 if file.is_file() and file.suffix == original_suffix:
                     file_stem = file.stem
+                    
+                    # 创建一个没有&的版本进行比较
+                    file_stem_no_amp = file_stem.replace('&', '')
+                    original_stem_no_amp = original_stem.replace('&', '')
+                    
                     # 如果文件名匹配但缺少&
-                    if (file_stem.replace('&', '') == original_stem.replace('&', '') and 
+                    if (file_stem_no_amp == original_stem_no_amp and 
                         '&' not in file_stem and 
                         '&' in original_stem):
                         
@@ -185,11 +195,16 @@ def restore_ampersand_in_filenames(output_dir: str, original_filenames: List[str
                         new_name = original_stem + original_suffix
                         new_path = output_path / new_name
                         
+                        # 如果目标文件已存在，先删除
+                        if new_path.exists():
+                            new_path.unlink()
+                        
                         # 重命名文件
                         file.rename(new_path)
                         logging.info(f"已恢复文件名中的&: {file.name} -> {new_name}")
     except Exception as e:
         logging.error(f"恢复文件名中的&时出错: {str(e)}")
+        logging.error(traceback.format_exc())
 
 def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str, 
                      subset_backend: str, bin_path: str, 
@@ -207,9 +222,9 @@ def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str,
         if not valid_inputs:
             return "错误：没有有效的ASS文件路径"
         
-        # 处理输出目录
+        # 处理输出目录 - 运行时不允许为空
         final_output_dir = output_dir
-        if not final_output_dir.strip():
+        if not final_output_dir or not final_output_dir.strip():
             # 如果输出目录为空，使用第一个输入文件所在目录下的output文件夹
             first_input_dir = os.path.dirname(valid_inputs[0])
             final_output_dir = os.path.join(first_input_dir, "output")
