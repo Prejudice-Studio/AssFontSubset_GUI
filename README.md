@@ -1,14 +1,15 @@
 # AssFontSubset_GUI
 
-[AssFontSubset](https://github.com/AmusementClub/AssFontSubset)的GUI
-
+[AssFontSubset Console](https://github.com/AmusementClub/AssFontSubset)的GUI
 因为没有可用的GUI所以自己写了一个
-
 使用Gradio
 
 ## 使用方法
+
 - 安装Pyhton与Pip
-- 下载[AssFontSubset.Console.exe](https://github.com/AmusementClub/AssFontSubset/releases/)，放到AssFontSubset_GUI目录下，打开命令行，`pip install gradio`，运行main.py即可。
+- 下载[AssFontSubset.Console.exe](https://github.com/AmusementClub/AssFontSubset/releases/)，放到AssFontSubset_GUI目录
+- 在项目文件夹内打开命令行，执行`pip install gradio`
+- 运行main.py即可
 
 ## 注
 

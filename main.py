@@ -25,7 +25,8 @@ if os.name == 'nt':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # ======================== 日志配置 ========================
-LOG_FILE = "assfontsubset_gui.log"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(BASE_DIR, "assfontsubset_gui.log")
 logging.basicConfig(
     filename=LOG_FILE,
     level=logging.INFO,
@@ -34,9 +35,10 @@ logging.basicConfig(
 )
 
 # ======================== 配置管理 ========================
-DEFAULT_CONFIG_PATH = os.path.join(os.getcwd(), "config.json")
-PORT_FILE_PATH = os.path.join(os.getcwd(), "WebUI_Port.txt")
+DEFAULT_CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+PORT_FILE_PATH = os.path.join(BASE_DIR, "WebUI_Port.txt")
 DEFAULT_PORT = 7888
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")  # 主程序同目录下的output文件夹
 DEFAULT_CONFIG = {
     "input_paths": [],
     "output_dir": "",
@@ -175,12 +177,11 @@ def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str,
         if not valid_inputs:
             return "错误：没有有效的ASS文件路径"
         
-        # 处理输出目录 - 运行时不允许为空
+        # 处理输出目录 - 如果为空，则使用主程序同目录下的output文件夹
         final_output_dir = output_dir
         if not final_output_dir or not final_output_dir.strip():
-            # 如果输出目录为空，使用第一个输入文件所在目录下的output文件夹
-            first_input_dir = os.path.dirname(valid_inputs[0])
-            final_output_dir = os.path.join(first_input_dir, "output")
+            # 使用主程序同目录下的output文件夹
+            final_output_dir = OUTPUT_DIR
         
         # 确保输出目录存在
         os.makedirs(final_output_dir, exist_ok=True)
@@ -227,6 +228,10 @@ def run_assfontsubset(input_paths: List[str], output_dir: str, font_dir: str,
         error_msg = f"执行出错：\n\n命令: {' '.join(cmd)}\n错误: {e.stderr}"
         logging.error(error_msg)
         return error_msg
+    except FileNotFoundError:
+        error_msg = f"找不到AssFontSubset可执行文件: ./AssFontSubset.Console\n请确保AssFontSubset.Console与主程序在同一目录下"
+        logging.error(error_msg)
+        return error_msg
     except Exception as e:
         error_msg = f"发生异常：\n\n{str(e)}\n\n{traceback.format_exc()}"
         logging.error(error_msg)
@@ -266,7 +271,7 @@ def create_ui():
                         file_types=[".ass"],
                         file_count="multiple"
                     )
-                    output_dir = gr.Textbox(label="输出目录 (默认: 同目录下的output文件夹)")
+                    output_dir = gr.Textbox(label="输出目录 (默认: 主程序同目录下的output文件夹)")
                     font_dir = gr.Textbox(label="字体目录 (默认: 同目录下的fonts文件夹)")
                     
                     with gr.Accordion("高级选项", open=False):
@@ -399,31 +404,46 @@ def safe_launch(demo, max_attempts=20):
         try:
             print(f"尝试在端口 {port} 启动...")
             
+            # 检查端口是否可用
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
                 s.bind(('127.0.0.1', port))
             
             # 设置信号处理
             signal.signal(signal.SIGINT, signal.SIG_DFL)
             
+            # 启动应用（去掉share模式）
             demo.launch(
                 server_name="127.0.0.1",
                 server_port=port,
-                show_error=True
+                show_error=True,
+                inbrowser=False
             )
             
+            # 保存成功启动的端口
             save_port_to_file(port)
             print(f"服务已启动在端口 {port}")
             webbrowser.open(f"http://127.0.0.1:{port}")
             return port
+            
         except OSError as e:
-            print(f"端口 {port} 不可用: {e}")
-            if attempt == max_attempts - 1:
-                print("尝试使用分享模式...")
-                demo.launch(share=True)
-                return None
+            if "Address already in use" in str(e) or "10048" in str(e):
+                print(f"端口 {port} 已被占用，尝试下一个端口...")
+                continue
+            else:
+                print(f"端口 {port} 启动失败: {e}")
+                continue
+        except Exception as e:
+            print(f"启动过程中发生错误: {e}")
+            continue
+    
+    print(f"尝试了 {max_attempts} 个端口后仍然无法启动，请检查网络设置")
+    return None
 
 def main():
     try:
+        # 创建输出目录
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        
         demo = create_ui()
         safe_launch(demo)
     except KeyboardInterrupt:
